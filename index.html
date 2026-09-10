@@ -1,0 +1,629 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>背单词</title>
+<style>
+  :root{
+    --gap:12px;
+    --radius:16px;
+    --border:#d9d9df;
+    --bg:#f6f7f9;
+    --card:#fff;
+    --text:#17181c;
+    --muted:#777b85;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",Arial,sans-serif;
+    background:var(--bg);
+    color:var(--text);
+  }
+  .app{max-width:900px;margin:0 auto;padding:18px 14px 32px}
+  h1{font-size:24px;margin:0 0 14px;text-align:center}
+  .toolbar{
+    display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:center;
+    margin-bottom:14px;
+  }
+  button,.file-label{
+    border:1px solid var(--border);background:#fff;border-radius:12px;
+    padding:10px 14px;font-size:16px;cursor:pointer;
+  }
+  input[type=file]{display:none}
+  .hint{font-size:13px;color:var(--muted);text-align:center;margin:0 0 14px}
+  .status{font-size:14px;text-align:center;margin:8px 0 14px;color:var(--muted)}
+  .card{
+    background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+    padding:16px;box-shadow:0 2px 8px rgba(0,0,0,.03);
+  }
+  .pair{
+    display:grid;grid-template-columns:1fr 1fr;gap:var(--gap);
+  }
+  .side{
+    min-height:150px;border:1px solid var(--border);border-radius:14px;
+    padding:14px;display:flex;align-items:center;justify-content:center;
+    text-align:center;font-size:28px;font-weight:650;line-height:1.35;
+    background:#fff;word-break:break-word;
+  }
+  .side.hidden-text{
+    color:transparent;
+    text-shadow:none;
+    user-select:none;
+  }
+  .controls{
+    display:grid;grid-template-columns:1fr 1fr;gap:var(--gap);margin-top:10px;
+  }
+  .controls button{width:100%}
+  .pronounce{
+    margin-top:14px;border-top:1px dashed var(--border);padding-top:14px;text-align:center;
+  }
+  .english{font-size:24px;font-weight:700;margin-bottom:6px}
+  .ipa{font-size:18px;color:var(--muted);min-height:26px}
+  .speak{
+    margin-top:10px;font-size:17px;padding:10px 18px;
+  }
+  .nav{
+    display:grid;grid-template-columns:1fr auto 1fr;align-items:center;
+    gap:10px;margin-top:16px;
+  }
+  .counter{text-align:center;color:var(--muted);min-width:90px}
+  .raw{
+    margin-top:16px;
+  }
+  textarea{
+    width:100%;min-height:150px;border:1px solid var(--border);border-radius:12px;
+    padding:12px;font-size:15px;resize:vertical;background:#fff;
+  }
+  .raw-actions{display:flex;gap:10px;margin-top:8px;justify-content:flex-end;flex-wrap:wrap}
+  .cloud{
+    margin-top:16px;background:#fff;border:1px solid var(--border);border-radius:16px;padding:14px;
+  }
+  .cloud-title{font-weight:700;margin-bottom:10px}
+  .cloud-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .cloud input{
+    flex:1;min-width:210px;border:1px solid var(--border);border-radius:12px;
+    padding:10px 12px;font-size:15px;
+  }
+  .cloud-note{font-size:13px;color:var(--muted);margin-top:8px;line-height:1.45}
+  @media(max-width:560px){
+    .app{padding:12px 10px 24px}
+    h1{font-size:22px}
+    .side{font-size:23px;min-height:135px}
+    .english{font-size:21px}
+  }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+<div class="app">
+  <h1>背单词</h1>
+
+  <div class="toolbar">
+    <label class="file-label" for="fileInput">导入 TXT</label>
+    <input id="fileInput" type="file" accept=".txt,text/plain">
+    <button id="swapBtn">左右互换</button>
+    <button id="resetBtn">清空</button>
+  </div>
+
+  <p class="hint">支持“英文 - 中文”“英文 — 中文”“英文：中文”“英文\t中文”，也支持一行英文、下一行中文的格式。</p>
+  <div class="status" id="status">还没有导入内容</div>
+
+  <div class="card">
+    <div class="pair">
+      <div id="leftBox" class="side">左侧</div>
+      <div id="rightBox" class="side">右侧</div>
+    </div>
+
+    <div class="controls">
+      <button id="leftToggle">隐藏左侧</button>
+      <button id="rightToggle">隐藏右侧</button>
+    </div>
+
+    <div class="pronounce">
+      <div id="englishWord" class="english">—</div>
+      <div id="ipa" class="ipa">音标将在可获取时显示</div>
+      <button id="speakBtn" class="speak">🔊 发音</button>
+    </div>
+
+    <div class="nav">
+      <button id="prevBtn">上一条</button>
+      <div id="counter" class="counter">0 / 0</div>
+      <button id="nextBtn">下一条</button>
+    </div>
+  </div>
+
+  <div class="raw">
+    <textarea id="pasteArea" placeholder="多文本输入框：可以一次输入很多单词/释义，例如：
+bread - 面包
+early - 早
+study English - 学英语
+
+也支持：
+bread
+面包
+early
+早"></textarea>
+    <div class="raw-actions">
+      <button id="parseBtn">识别输入内容</button>
+      <button id="exportBtn">导出 TXT</button>
+    </div>
+  </div>
+
+  <div class="cloud">
+    <div class="cloud-title">☁️ Supabase 云同步</div>
+    <div class="cloud-row">
+      <input id="cloudAccount" type="email" placeholder="邮箱">
+      <input id="cloudPassword" type="password" placeholder="登录密码">
+      <button id="loginBtn">登录</button>
+      <button id="logoutBtn">退出</button>
+    </div>
+    <div class="cloud-row" style="margin-top:10px">
+      <button id="cloudUploadBtn">上传云端</button>
+      <button id="cloudDownloadBtn">下载云端</button>
+    </div>
+    <div class="cloud-note" id="cloudStatus">未登录。登录后自动实时同步；手机、iPad、电脑保持同一套单词。</div>
+  </div>
+
+  <div class="cloud">
+    <div class="cloud-title">🔊 腾讯云 AI 发音</div>
+    <div class="cloud-row">
+      <input id="ttsPassword" type="password" placeholder="接口密码">
+      <button id="saveTtsPasswordBtn">记住密码</button>
+    </div>
+    <div class="cloud-note" id="ttsStatus">点击上面的“发音”时，优先使用腾讯云英文 AI 语音；失败时自动回退到系统英文语音。</div>
+  </div>
+</div>
+
+<script>
+const STORAGE_KEY = "word_learning_v2_state";
+const TTS_PASSWORD_KEY = "word_learning_tts_password";
+const SUPABASE_URL = "https://braarnzywbodyfdclodc.supabase.co";
+const SUPABASE_KEY = "sb_publishable_JecnrG-198PERwUD5lFhaQ_wc0vV4Lj";
+const TTS_URL = "https://braarnzywbodyfdclodc.supabase.co/functions/v1/tts";
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const state = {
+  items: [],
+  index: 0,
+  leftHidden: false,
+  rightHidden: false,
+  swap: false
+};
+
+function saveLocal(){
+  try{
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      items: state.items,
+      index: state.index,
+      leftHidden: state.leftHidden,
+      rightHidden: state.rightHidden,
+      swap: state.swap,
+      raw: document.getElementById("pasteArea")?.value || ""
+    }));
+  }catch(e){}
+  if(!autoSyncBusy) scheduleCloudSync();
+}
+function loadLocal(){
+  try{
+    const d = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
+    if(!d) return;
+    if(Array.isArray(d.items)) state.items = d.items;
+    state.index = Number.isFinite(d.index) ? d.index : 0;
+    state.leftHidden = !!d.leftHidden;
+    state.rightHidden = !!d.rightHidden;
+    state.swap = !!d.swap;
+    if(typeof d.raw === "string") document.getElementById("pasteArea").value = d.raw;
+  }catch(e){}
+}
+
+const $ = id => document.getElementById(id);
+const leftBox = $("leftBox");
+const rightBox = $("rightBox");
+const englishWord = $("englishWord");
+const ipaEl = $("ipa");
+const counter = $("counter");
+const statusEl = $("status");
+
+function hasLatin(s){
+  return /[A-Za-z]/.test(s || "");
+}
+function hasCJK(s){
+  return /[\u3400-\u9FFF]/.test(s || "");
+}
+function looksEnglish(s){
+  if(!s) return false;
+  const letters = (s.match(/[A-Za-z]/g)||[]).length;
+  const cjk = (s.match(/[\u3400-\u9FFF]/g)||[]).length;
+  return letters > 0 && letters >= cjk * 2;
+}
+function cleanLine(s){
+  return s.replace(/^\s*\d+[\.\、\)]?\s*/, "").trim();
+}
+function parseText(text){
+  const lines = text
+    .replace(/\r/g,"")
+    .split("\n")
+    .map(cleanLine)
+    .filter(Boolean);
+
+  const items = [];
+  let pending = null;
+
+  for(let i=0;i<lines.length;i++){
+    const line = lines[i];
+
+    // Try common separators.
+    let parts = null;
+    const patterns = [
+      /\s*\t+\s*/,
+      /\s+[—–-]\s+/,
+      /\s*[:：]\s*/
+    ];
+    for(const p of patterns){
+      const m = line.split(p);
+      if(m.length >= 2){
+        parts = [m[0].trim(), m.slice(1).join(" ").trim()];
+        break;
+      }
+    }
+
+    if(parts && parts[0] && parts[1]){
+      let a = parts[0], b = parts[1];
+      if(looksEnglish(a) && !looksEnglish(b)){
+        items.push({left:a,right:b,english:a});
+      }else if(looksEnglish(b) && !looksEnglish(a)){
+        items.push({left:a,right:b,english:b});
+      }else{
+        items.push({left:a,right:b,english: looksEnglish(a) ? a : (looksEnglish(b)?b:a)});
+      }
+      pending = null;
+      continue;
+    }
+
+    // Pair consecutive lines by language.
+    if(pending === null){
+      pending = line;
+    }else{
+      const a = pending, b = line;
+      const aEng = looksEnglish(a), bEng = looksEnglish(b);
+      if(aEng !== bEng || hasCJK(a) !== hasCJK(b)){
+        items.push({
+          left:a,
+          right:b,
+          english:aEng ? a : (bEng ? b : (hasLatin(a)?a:b))
+        });
+        pending = null;
+      }else{
+        // Same-type lines: keep first as standalone and shift.
+        items.push({left:a,right:"",english:aEng ? a : ""});
+        pending = b;
+      }
+    }
+  }
+  if(pending !== null){
+    items.push({left:pending,right:"",english:looksEnglish(pending)?pending:""});
+  }
+
+  return items.filter(x => x.left || x.right);
+}
+
+// A small offline IPA dictionary for common vocabulary.
+// If absent, page falls back to Web Speech pronunciation and shows "未内置音标".
+const IPA = {
+"bread":"/bred/","early":"/ˈɜːrli/","study":"/ˈstʌdi/","english":"/ˈɪŋɡlɪʃ/",
+"read":"/riːd/","newspaper":"/ˈnuːzˌpeɪpər/","august":"/ˈɔːɡəst/",
+"get":"/ɡet/","up":"/ʌp/","always":"/ˈɔːlweɪz/","sweep":"/swiːp/",
+"floor":"/flɔːr/","exercise":"/ˈeksərsaɪz/","january":"/ˈdʒænjuˌeri/",
+"steak":"/steɪk/","gym":"/dʒɪm/","first":"/fɜːrst/","busy":"/ˈbɪzi/",
+"october":"/ɑːkˈtoʊbər/","watch":"/wɑːtʃ/","movie":"/ˈmuːvi/",
+"science":"/ˈsaɪəns/","soup":"/suːp/","surf":"/sɜːrf/","net":"/net/",
+"brush":"/brʌʃ/","teeth":"/tiːθ/","april":"/ˈeɪprəl/","dumplings":"/ˈdʌmplɪŋz/",
+"eat":"/iːt/","dinner":"/ˈdɪnər/","wash":"/wɑːʃ/","dishes":"/ˈdɪʃɪz/",
+"fifth":"/fɪfθ/","july":"/dʒuˈlaɪ/","walk":"/wɔːk/","school":"/skuːl/",
+"beef":"/biːf/","noodles":"/ˈnuːdəlz/","dirty":"/ˈdɜːrti/","rice":"/raɪs/",
+"december":"/dɪˈsembər/","dog":"/dɔːɡ/","march":"/mɑːrtʃ/","late":"/leɪt/",
+"fried":"/fraɪd/","chicken":"/ˈtʃɪkɪn/","ride":"/raɪd/","horse":"/hɔːrs/",
+"fish":"/fɪʃ/","chinese":"/ˌtʃaɪˈniːz/","comb":"/koʊm/","hair":"/her/",
+"library":"/ˈlaɪbreri/","bank":"/bæŋk/","coat":"/koʊt/","bake":"/beɪk/",
+"cake":"/keɪk/","math":"/mæθ/","test":"/test/","shorts":"/ʃɔːrts/",
+"korea":"/kəˈriːə/","take":"/teɪk/","nap":"/næp/","shower":"/ˈʃaʊər/",
+"shoes":"/ʃuːz/","circle":"/ˈsɜːrkəl/","shopping":"/ˈʃɑːpɪŋ/",
+"photos":"/ˈfoʊtoʊz/","jeans":"/dʒiːnz/","skirt":"/skɜːrt/","buy":"/baɪ/",
+"gift":"/ɡɪft/","play":"/pleɪ/","violin":"/ˌvaɪəˈlɪn/","summer":"/ˈsʌmər/",
+"shirt":"/ʃɜːrt/","camping":"/ˈkæmpɪŋ/","basketball":"/ˈbæskɪtbɔːl/",
+"japan":"/dʒəˈpæn/","dress":"/dres/","theater":"/ˈθiːətər/",
+"barbecue":"/ˈbɑːrbɪkjuː/","winter":"/ˈwɪntər/","square":"/skwer/",
+"piano":"/piˈænoʊ/","field":"/fiːld/","trip":"/trɪp/","america":"/əˈmerɪkə/",
+"triangle":"/ˈtraɪˌæŋɡəl/","see":"/siː/","fireworks":"/ˈfaɪərwɜːrks/",
+"book":"/bʊk/","tickets":"/ˈtɪkɪts/","sneakers":"/ˈsniːkərz/",
+"supermarket":"/ˈsuːpərˌmɑːrkɪt/","mop":"/mɑːp/","vacation":"/veɪˈkeɪʃən/",
+"rectangle":"/ˈrektæŋɡəl/","tennis":"/ˈtenɪs/","attend":"/əˈtend/",
+"concert":"/ˈkɑːnsərt/","department":"/dɪˈpɑːrtmənt/","store":"/stɔːr/"
+};
+
+function ipaFor(text){
+  if(!text) return "";
+  const key = text.toLowerCase().trim();
+  if(IPA[key]) return IPA[key];
+  const words = key.match(/[a-z']+/g) || [];
+  if(words.length && words.every(w => IPA[w])){
+    return words.map(w => IPA[w].replace(/^\/|\/$/g,"")).join(" ") ? 
+      "/" + words.map(w => IPA[w].replace(/^\/|\/$/g,"")).join(" ") + "/" : "";
+  }
+  return "";
+}
+
+function render(){
+  if(!state.items.length){
+    leftBox.textContent = "左侧";
+    rightBox.textContent = "右侧";
+    englishWord.textContent = "—";
+    ipaEl.textContent = "音标将在可获取时显示";
+    counter.textContent = "0 / 0";
+    statusEl.textContent = "还没有导入内容";
+    return;
+  }
+  state.index = Math.max(0, Math.min(state.index, state.items.length-1));
+  const item = state.items[state.index];
+  const left = state.swap ? item.right : item.left;
+  const right = state.swap ? item.left : item.right;
+
+  leftBox.textContent = left || " ";
+  rightBox.textContent = right || " ";
+  leftBox.classList.toggle("hidden-text", state.leftHidden);
+  rightBox.classList.toggle("hidden-text", state.rightHidden);
+  $("leftToggle").textContent = state.leftHidden ? "显示左侧" : "隐藏左侧";
+  $("rightToggle").textContent = state.rightHidden ? "显示右侧" : "隐藏右侧";
+
+  let eng = item.english || "";
+  if(!eng){
+    const cands = [item.left,item.right].filter(looksEnglish);
+    eng = cands[0] || "";
+  }
+  englishWord.textContent = eng || "未识别英文";
+  const ipa = ipaFor(eng);
+  ipaEl.textContent = ipa || "未内置此词音标";
+  counter.textContent = `${state.index+1} / ${state.items.length}`;
+  statusEl.textContent = `已识别 ${state.items.length} 条`;
+  saveLocal();
+}
+
+function loadText(text){
+  const items = parseText(text);
+  state.items = items;
+  state.index = 0;
+  state.leftHidden = false;
+  state.rightHidden = false;
+  $("leftToggle").textContent = "隐藏左侧";
+  $("rightToggle").textContent = "隐藏右侧";
+  render();
+}
+
+$("fileInput").addEventListener("change", async e=>{
+  const f = e.target.files[0];
+  if(!f) return;
+  const text = await f.text();
+  $("pasteArea").value = text;
+  loadText(text);
+});
+
+$("parseBtn").addEventListener("click", ()=>loadText($("pasteArea").value));
+
+$("prevBtn").addEventListener("click", ()=>{
+  if(!state.items.length) return;
+  state.index = (state.index - 1 + state.items.length) % state.items.length;
+  render();
+});
+$("nextBtn").addEventListener("click", ()=>{
+  if(!state.items.length) return;
+  state.index = (state.index + 1) % state.items.length;
+  render();
+});
+
+$("leftToggle").addEventListener("click", ()=>{
+  state.leftHidden = !state.leftHidden;
+  $("leftToggle").textContent = state.leftHidden ? "显示左侧" : "隐藏左侧";
+  render();
+});
+$("rightToggle").addEventListener("click", ()=>{
+  state.rightHidden = !state.rightHidden;
+  $("rightToggle").textContent = state.rightHidden ? "显示右侧" : "隐藏右侧";
+  render();
+});
+$("swapBtn").addEventListener("click", ()=>{
+  state.swap = !state.swap;
+  render();
+});
+$("resetBtn").addEventListener("click", ()=>{
+  state.items = []; state.index = 0; state.swap = false;
+  $("pasteArea").value = "";
+  render();
+});
+$("speakBtn").addEventListener("click", async ()=>{
+  if(!state.items.length) return;
+  const item = state.items[state.index];
+  let eng = item.english || [item.left,item.right].find(looksEnglish) || "";
+  if(!eng) return;
+
+  const ttsPassword = $("ttsPassword").value || localStorage.getItem(TTS_PASSWORD_KEY) || "";
+  if(ttsPassword){
+    try{
+      $("ttsStatus").textContent = "腾讯云 AI 发音生成中…";
+      const r = await fetch(TTS_URL,{
+        method:"POST",
+        headers:{
+          "Content-Type":"application/json",
+          "x-transcribe-password":ttsPassword
+        },
+        body:JSON.stringify({
+          text:eng,
+          voiceType:502003,
+          speed:-0.5,
+          segmentRate:0
+        })
+      });
+      if(!r.ok){
+        let msg = "";
+        try{ msg = (await r.json()).error || ""; }catch(e){}
+        throw new Error(msg || `HTTP ${r.status}`);
+      }
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audio.onended = ()=>URL.revokeObjectURL(url);
+      await audio.play();
+      $("ttsStatus").textContent = "腾讯云 AI 发音";
+      return;
+    }catch(e){
+      $("ttsStatus").textContent = "AI 发音失败，已切换系统语音：" + e.message;
+    }
+  }
+
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(eng);
+  u.lang = "en-US";
+  u.rate = 0.9;
+  const voices = speechSynthesis.getVoices();
+  const googleVoice = voices.find(v => /Google.*English/i.test(v.name))
+                   || voices.find(v => /^en(-|_)/i.test(v.lang));
+  if(googleVoice) u.voice = googleVoice;
+  speechSynthesis.speak(u);
+});
+
+
+$("exportBtn").addEventListener("click", ()=>{
+  const raw = $("pasteArea").value.trim();
+  const content = raw || state.items.map(x => `${x.left}${x.right ? " - " + x.right : ""}`).join("\n");
+  if(!content){ alert("还没有可导出的内容"); return; }
+  const blob = new Blob(["\ufeff" + content], {type:"text/plain;charset=utf-8"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "背单词.txt";
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},500);
+});
+
+$("pasteArea").addEventListener("input", saveLocal);
+
+
+
+let autoSyncTimer = null;
+let autoSyncBusy = false;
+let autoSyncPending = false;
+
+function scheduleCloudSync(){
+  clearTimeout(autoSyncTimer);
+  autoSyncTimer = setTimeout(()=>autoUploadCloud(), 600);
+}
+
+async function autoUploadCloud(){
+  if(autoSyncBusy){ autoSyncPending = true; return; }
+  const user = await currentUser();
+  if(!user) return;
+  autoSyncBusy = true;
+  autoSyncPending = false;
+  try{
+    saveLocal();
+    let local = {};
+    try{ local = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}"); }catch(e){}
+    $("cloudStatus").textContent = "正在自动同步…";
+    const {error} = await sb.from("word_learning_sync").upsert({
+      user_id:user.id,
+      data:local,
+      updated_at:new Date().toISOString()
+    }, {onConflict:"user_id"});
+    $("cloudStatus").textContent = error ? ("自动同步失败：" + error.message) : "已自动同步到云端";
+  } finally {
+    autoSyncBusy = false;
+    if(autoSyncPending) scheduleCloudSync();
+  }
+}
+
+async function currentUser(){
+  const {data:{user}} = await sb.auth.getUser();
+  return user;
+}
+async function refreshAuthStatus(){
+  const user = await currentUser();
+  if(user){
+    $("cloudStatus").textContent = `已登录：${user.email}`;
+    $("cloudAccount").value = user.email || "";
+  }else{
+    $("cloudStatus").textContent = "未登录。登录后开启实时自动同步。";
+  }
+}
+$("loginBtn").addEventListener("click", async ()=>{
+  const email = $("cloudAccount").value.trim();
+  const password = $("cloudPassword").value;
+  if(!email || !password){ alert("请输入邮箱和密码"); return; }
+  $("cloudStatus").textContent = "正在登录…";
+  const {error} = await sb.auth.signInWithPassword({email,password});
+  if(error){ $("cloudStatus").textContent = "登录失败：" + error.message; return; }
+  $("cloudPassword").value = "";
+  await refreshAuthStatus();
+  const user = await currentUser();
+  if(user){
+    const {data,error} = await sb.from("word_learning_sync").select("data,updated_at").eq("user_id",user.id).maybeSingle();
+    if(!error && data?.data){
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data.data));
+      loadLocal();
+      render();
+      $("cloudStatus").textContent = "已登录并自动下载云端数据";
+    }else{
+      scheduleCloudSync();
+    }
+  }
+});
+$("logoutBtn").addEventListener("click", async ()=>{
+  await sb.auth.signOut();
+  $("cloudStatus").textContent = "已退出登录。";
+});
+$("cloudUploadBtn").addEventListener("click", async ()=>{
+  const user = await currentUser();
+  if(!user){ $("cloudStatus").textContent = "请先登录。"; return; }
+  saveLocal();
+  let local = {};
+  try{ local = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}"); }catch(e){}
+  $("cloudStatus").textContent = "正在上传云端…";
+  const {error} = await sb.from("word_learning_sync").upsert({
+    user_id:user.id,
+    data:local,
+    updated_at:new Date().toISOString()
+  }, {onConflict:"user_id"});
+  $("cloudStatus").textContent = error ? ("上传失败：" + error.message) : "已同步到云端。";
+});
+$("cloudDownloadBtn").addEventListener("click", async ()=>{
+  const user = await currentUser();
+  if(!user){ $("cloudStatus").textContent = "请先登录。"; return; }
+  $("cloudStatus").textContent = "正在下载云端数据…";
+  const {data,error} = await sb.from("word_learning_sync").select("data,updated_at").eq("user_id",user.id).maybeSingle();
+  if(error){ $("cloudStatus").textContent = "下载失败：" + error.message; return; }
+  if(!data){ $("cloudStatus").textContent = "云端还没有数据。"; return; }
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(data.data || {}));
+  loadLocal();
+  render();
+  $("cloudStatus").textContent = "云端数据已下载。";
+});
+
+$("saveTtsPasswordBtn").addEventListener("click", ()=>{
+  localStorage.setItem(TTS_PASSWORD_KEY, $("ttsPassword").value || "");
+  $("ttsStatus").textContent = "接口密码已保存在本机。";
+});
+
+// Keyboard support
+document.addEventListener("keydown", e=>{
+  if(e.target.tagName === "TEXTAREA" || e.target.tagName === "INPUT") return;
+  if(e.key === "ArrowLeft") $("prevBtn").click();
+  if(e.key === "ArrowRight") $("nextBtn").click();
+  if(e.key === " ") { e.preventDefault(); $("speakBtn").click(); }
+});
+
+loadLocal();
+$("ttsPassword").value = localStorage.getItem(TTS_PASSWORD_KEY) || "";
+refreshAuthStatus();
+render();
+</script>
+</body>
+</html>
